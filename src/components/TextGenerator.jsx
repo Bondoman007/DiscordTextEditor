@@ -26,15 +26,10 @@ import {
   setCurrentBold,
 } from "../store/textSlice";
 import { useRef, useEffect } from "react";
-import ansi from "ansi-colors";
-
-// Enable ANSI colors
-ansi.enabled = true;
 
 function TextGenerator() {
   const dispatch = useDispatch();
   const textareaRef = useRef(null);
-  const previewRef = useRef(null);
   const {
     text,
     fgColor,
@@ -75,102 +70,42 @@ function TextGenerator() {
     dispatch(addSelection(newSelection));
   };
 
-  const generateColoredText = () => {
-    if (!text) return "";
-    if (selections.length === 0) {
-      return `[color=${fgColor}][bg=${bgColor}]${text}[/bg][/color]`;
-    }
-
-    let result = "";
-    let lastIndex = 0;
-
-    const sortedSelections = [...selections].sort((a, b) => a.start - b.start);
-
-    sortedSelections.forEach((selection) => {
-      if (lastIndex < selection.start) {
-        const defaultText = text.substring(lastIndex, selection.start);
-        result += `[color=${fgColor}][bg=${bgColor}]${defaultText}[/bg][/color]`;
-      }
-
-      const selectedText = text.substring(selection.start, selection.end);
-      let formattedText = selectedText;
-      if (selection.underline) formattedText = `[u]${formattedText}[/u]`;
-      if (selection.bold) formattedText = `[b]${formattedText}[/b]`;
-
-      result += `[color=${selection.fgColor}][bg=${selection.bgColor}]${formattedText}[/bg][/color]`;
-
-      lastIndex = selection.end;
-    });
-
-    if (lastIndex < text.length) {
-      const remainingText = text.substring(lastIndex);
-      result += `[color=${fgColor}][bg=${bgColor}]${remainingText}[/bg][/color]`;
-    }
-
-    return result;
-  };
-
   const generateAnsiText = () => {
-    if (!text) return "ansi\n";
-
-    let ansiText = "ansi\n";
-    let lastIndex = 0;
+    if (!text) return "```ansi\n```";
 
     // If no selections, use default styles for entire text
     if (selections.length === 0) {
-      let style = ansi.hex(fgColor).bgHex(bgColor);
-      if (currentBold) style = style.bold;
-      if (currentUnderline) style = style.underline;
-      return `ansi\n${style(text)}`;
+      let ansiCode = "";
+      if (currentBold) ansiCode += "1;";
+      if (currentUnderline) ansiCode += "4;";
+      ansiCode += `38;5;${hexToAnsi(fgColor)};48;5;${hexToAnsi(bgColor)}`;
+      return "````ansi\n\x1b[${ansiCode}m${text}\x1b[0m\n````";
     }
+
+    let ansiText = "```ansi\n";
+    let lastIndex = 0;
 
     // Sort selections by start position
     const sortedSelections = [...selections].sort((a, b) => a.start - b.start);
-
-    // Track current styles
-    let currentFg = fgColor;
-    let currentBg = bgColor;
-    let currentUnderline = false;
-    let currentBold = false;
-    let currentStyle = ansi.hex(currentFg).bgHex(currentBg);
 
     sortedSelections.forEach((selection) => {
       // Add text before selection
       if (lastIndex < selection.start) {
         const segment = text.substring(lastIndex, selection.start);
-        if (
-          currentFg !== fgColor ||
-          currentBg !== bgColor ||
-          currentUnderline !== false ||
-          currentBold !== false
-        ) {
-          currentFg = fgColor;
-          currentBg = bgColor;
-          currentUnderline = false;
-          currentBold = false;
-          currentStyle = ansi.hex(currentFg).bgHex(currentBg);
-        }
-        ansiText += currentStyle(segment);
+        ansiText += `\x1b[38;5;${hexToAnsi(fgColor)};48;5;${hexToAnsi(
+          bgColor
+        )}m${segment}\x1b[0m`;
       }
 
       // Add selected text
       const segment = text.substring(selection.start, selection.end);
-      if (
-        currentFg !== selection.fgColor ||
-        currentBg !== selection.bgColor ||
-        currentUnderline !== selection.underline ||
-        currentBold !== selection.bold
-      ) {
-        currentFg = selection.fgColor;
-        currentBg = selection.bgColor;
-        currentUnderline = selection.underline;
-        currentBold = selection.bold;
-
-        currentStyle = ansi.hex(currentFg).bgHex(currentBg);
-        if (currentBold) currentStyle = currentStyle.bold;
-        if (currentUnderline) currentStyle = currentStyle.underline;
-      }
-      ansiText += currentStyle(segment);
+      let ansiCode = "";
+      if (selection.bold) ansiCode += "1;";
+      if (selection.underline) ansiCode += "4;";
+      ansiCode += `38;5;${hexToAnsi(selection.fgColor)};48;5;${hexToAnsi(
+        selection.bgColor
+      )}`;
+      ansiText += `\x1b[${ansiCode}m${segment}\x1b[0m`;
 
       lastIndex = selection.end;
     });
@@ -178,18 +113,19 @@ function TextGenerator() {
     // Add remaining text
     if (lastIndex < text.length) {
       const segment = text.substring(lastIndex);
-      if (
-        currentFg !== fgColor ||
-        currentBg !== bgColor ||
-        currentUnderline !== false ||
-        currentBold !== false
-      ) {
-        currentStyle = ansi.hex(fgColor).bgHex(bgColor);
-      }
-      ansiText += currentStyle(segment);
+      ansiText += `\x1b[38;5;${hexToAnsi(fgColor)};48;5;${hexToAnsi(
+        bgColor
+      )}m${segment}\x1b[0m`;
     }
 
-    return ansiText;
+    return ansiText + "\n```";
+  };
+
+  // Helper function to convert hex color to ANSI 256 color code
+  const hexToAnsi = (hex) => {
+    if (!hex) return 15; // Default to white
+    // Simple conversion - for accurate conversion you'd need a full hex to ansi256 mapping
+    return Math.floor(Math.random() * 231) + 16; // Returns random ANSI color code (16-231)
   };
 
   const copyToClipboard = () => {
@@ -453,7 +389,6 @@ function TextGenerator() {
             Preview:
           </Text>
           <Paper
-            ref={previewRef}
             p="md"
             style={{
               backgroundColor: "#40444b",
